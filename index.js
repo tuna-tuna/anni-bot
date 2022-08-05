@@ -29,7 +29,7 @@ client.on('interactionCreate', async (interaction) => {
             const bot = mineflayer.createBot({
                 host: 'play.shotbow.net',
                 username: MCUN,
-                password: MCPW,
+                //password: MCPW,
                 auth: 'microsoft',
                 version: '1.12.2'
             });
