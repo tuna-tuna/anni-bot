@@ -1,5 +1,6 @@
 const mineflayer = require('mineflayer');
-const { Client, GatewayIntentBits } = require('discord.js');
+const puppeteer = require('puppeteer');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
 const { MCUN, MCPW, CLIENT_ID, TOKEN } = process.env
@@ -7,10 +8,22 @@ const { MCUN, MCPW, CLIENT_ID, TOKEN } = process.env
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once('ready', async () => {
-    const data = [{
-        name: 'matches',
-        description: 'View Current Matches',
-    }];
+    const data = [
+        {
+            name: 'matches',
+            description: 'View Current Matches',
+        },
+        {
+            name: 'stats',
+            description: 'View Player\'s stats',
+            options: [{
+                type: 3,
+                name: 'mcid',
+                description: 'Enter mcid.',
+                required: true
+            }]
+        }
+    ];
     await client.application.commands.set(data);
     console.log('Ready');
 });
@@ -143,6 +156,48 @@ client.on('interactionCreate', async (interaction) => {
         }).then(() => {
             interaction.editReply({ embeds: [embedObject] });
         });
+    }
+    if (interaction.commandName === 'stats') {
+        await interaction.deferReply();
+        const username = interaction.options.getString('mcid');
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+        const url = 'https://shotbow.net/forum/stats/annihilation/' + username;
+        await page.goto(url, { waitUntil: 'networkidle0' });
+        data = await page.evaluate(() => {
+            let headurl = document.querySelector('td.gamestats-playertable-avatar>img').src;
+            let playtime = document.querySelector('td.gamestats-playertable-time').innerHTML;
+            let winlose = document.querySelector('td.gamestats-playertable-WL>strong').innerHTML;
+            let statsel = document.querySelectorAll('td.gamestats-playertable-stat-total');
+            let stats = [];
+            statsel.forEach((element) => {
+                stats.push(element.innerHTML);
+            });
+            return [headurl, playtime, winlose, stats];
+        });
+        // stats: 'Total', bow kills, melee kills, nexus damage, ore mined        
+        await browser.close();
+
+        const formattedPT = data[1].replace('Time Played:\n', '').replace('\n', '');
+        const playTimeList = formattedPT.match(/[0-9]+/g);
+        const playTimeHours = parseInt(playTimeList[0]) * 24 + parseInt(playTimeList[1]);
+
+        const winloseList = data[2].match(/[0-9]+/g);
+        const winrate = Math.round((parseInt(winloseList[0]) / (parseInt(winloseList[0]) + parseInt(winloseList[1]))) * 1000) / 10;
+
+        const embedObject = new EmbedBuilder()
+            .setTitle('Annihilation Stats')
+            .setAuthor({ name: username + '\'s Stats', url: url })
+            .setThumbnail(data[0])
+            .addFields(
+                { name: 'PlayTime', value: playTimeHours.toString() + ' hours' },
+                { name: 'Win - Lose', value: data[2].replace(':', ' - ') + '\nWin Rate: ' + winrate + '%' },
+                { name: 'Kills', value: 'Melee Kills: ' + data[3][2] + '\nBow Kills: ' + data[3][1] },
+                { name: 'Other Stats', value: 'Nexus Damages: ' + data[3][3] + '\nOres Mined: ' + data[3][4] }
+            )
+            .setFooter({ text: 'Info from Shotbow.net', iconURL: 'https://shotbow.net/forum/styles/fusiongamer/xenforo/avatars/avatar_l.png' });
+
+        await interaction.editReply({embeds: [embedObject]});
     }
 });
 
