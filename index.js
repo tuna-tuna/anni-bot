@@ -63,7 +63,7 @@ client.on('interactionCreate', async (interaction) => {
                     auth: 'microsoft',
                     version: '1.12.2',
                     viewDistance: 'tiny',
-                    args: ['--no-sandbox']
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
                 });
 
                 // for debug
