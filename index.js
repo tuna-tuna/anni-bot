@@ -62,7 +62,8 @@ client.on('interactionCreate', async (interaction) => {
                     password: MCPW,
                     auth: 'microsoft',
                     version: '1.12.2',
-                    viewDistance: 'tiny'
+                    viewDistance: 'tiny',
+                    args: ['--no-sandbox']
                 });
 
                 // for debug
