@@ -59,11 +59,10 @@ client.on('interactionCreate', async (interaction) => {
                 const bot = mineflayer.createBot({
                     host: 'play.shotbow.net',
                     username: MCUN,
-                    password: MCPW,
+                    //password: MCPW,
                     auth: 'microsoft',
                     version: '1.12.2',
-                    viewDistance: 'tiny',
-                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                    viewDistance: 'tiny'
                 });
 
                 // for debug
@@ -184,7 +183,9 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'stats') {
         await interaction.deferReply();
         const username = interaction.options.getString('mcid');
-        const browser = await puppeteer.launch();
+        const browser = await puppeteer.launch({
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         const url = 'https://shotbow.net/forum/stats/annihilation/' + username;
         await page.goto(url, { waitUntil: 'networkidle0' });
