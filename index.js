@@ -61,7 +61,8 @@ client.on('interactionCreate', async (interaction) => {
                     username: MCUN,
                     password: MCPW,
                     auth: 'microsoft',
-                    version: '1.12.2'
+                    version: '1.12.2',
+                    viewDistance: 'tiny'
                 });
 
                 // for debug
