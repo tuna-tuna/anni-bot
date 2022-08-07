@@ -63,6 +63,9 @@ client.on('interactionCreate', async (interaction) => {
                     auth: 'microsoft',
                     version: '1.12.2'
                 });
+
+                // for debug
+                bot.on('kicked', console.log)
         
                 bot.on('spawn', async () => {
                     setTimeout(() => {
