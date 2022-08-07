@@ -43,7 +43,7 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) {
-        return;
+        return; 
     }
     if (interaction.commandName === 'matches') {
         if (isWorking === true) {
