@@ -1,10 +1,9 @@
 const mineflayer = require('mineflayer');
-const puppeteer = require('puppeteer');
 const { default: axios } = require('axios');
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
-const { MCUN, MCPW, CLIENT_ID, TOKEN, BROWSERLESS_TOKEN } = process.env
+const { MCUN, MCPW, TOKEN, BROWSERLESS_TOKEN } = process.env
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -35,6 +34,10 @@ client.once('ready', async () => {
                 description: 'Enter mcid.',
                 required: true
             }]
+        },
+        {
+            name: 'players',
+            description: 'View Current Players',
         }
     ];
     await client.application.commands.set(data);
@@ -322,6 +325,26 @@ client.on('interactionCreate', async (interaction) => {
             }
             return str;
         }
+    }
+
+    if (interaction.commandName === 'players') {
+        await interaction.deferReply();
+        axios.get('https://shotbow.net/serverList.json').then((res) => {
+            const allplayers = res.data['all'];
+            const anni = res.data['annihilation'];
+            const minez = res.data['minez'];
+            const smash = res.data['smash'];
+            const lobby = res.data['lobby'];
+            const slaughter = res.data['slaughter'];
+
+            const embedString = '```' + `Overall: ${allplayers}\nLobby: ${lobby}\nAnnihilation: ${anni}\nMineZ: ${minez}\nSmash: ${smash}\nSlaughter: ${slaughter}` + '```';
+
+            const embedObject = new EmbedBuilder()
+                .setAuthor({ name: 'Players on Shotbow', url: 'https://shotbow.net/serverList.json', iconURL: 'https://shotbow.net/forum/styles/fusiongamer/xenforo/avatars/avatar_l.png' })
+                .addFields({ name: '\u200B', value: embedString });
+            
+            interaction.editReply({ embeds: [embedObject] });
+        });
     }
 });
 
