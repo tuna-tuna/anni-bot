@@ -4,7 +4,7 @@ const { default: axios } = require('axios');
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
-const { MCUN, MCPW, CLIENT_ID, TOKEN } = process.env
+const { MCUN, MCPW, CLIENT_ID, TOKEN, BROWSERLESS_TOKEN } = process.env
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -59,7 +59,7 @@ client.on('interactionCreate', async (interaction) => {
                 const bot = mineflayer.createBot({
                     host: 'play.shotbow.net',
                     username: MCUN,
-                    //password: MCPW,
+                    password: MCPW,
                     auth: 'microsoft',
                     version: '1.12.2',
                     viewDistance: 'tiny'
@@ -180,9 +180,65 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
     }
+
     if (interaction.commandName === 'stats') {
         await interaction.deferReply();
         const username = interaction.options.getString('mcid');
+
+        data = {
+            url: "https://shotbow.net/forum/stats/annihilation/" + username,
+            elements: [
+                {
+                    selector: "td.gamestats-playertable-avatar>img"
+                },
+                {
+                    selector: "td.gamestats-playertable-time"
+                },
+                {
+                    selector: "td.gamestats-playertable-WL>strong"
+                },
+                {
+                    selector: "td.gamestats-playertable-stat-total"
+                }
+            ],
+            gotoOptions: {
+                timeout: 10000,
+                waitUntil: "networkidle0"
+            }
+        };
+        await axios.post('https://chrome.browserless.io/scrape?token=' + BROWSERLESS_TOKEN, data).then((res) => {
+            let headurl = 'https:' + res.data['data'][0]['results'][0]['attributes'][2]['value'];
+            let playtime = res.data['data'][1]['results'][0]['html'];
+            let winlose = res.data['data'][2]['results'][0]['html'];
+            let bowkills = res.data['data'][3]['results'][1]['html'];
+            let meleekills = res.data['data'][3]['results'][2]['html'];
+            let nexusdmg = res.data['data'][3]['results'][3]['html'];
+            let oremined = res.data['data'][3]['results'][4]['html'];
+
+            const formattedPT = playtime.replace('Time Played:\n', '').replace('\n', '');
+            const playTimeList = formattedPT.match(/[0-9]+/g);
+            const playTimeHours = parseInt(playTimeList[0]) * 24 + parseInt(playTimeList[1]);
+
+            const winloseList = winlose.match(/[0-9]+/g);
+            const winrate = Math.round((parseInt(winloseList[0]) / (parseInt(winloseList[0]) + parseInt(winloseList[1]))) * 1000) / 10;
+
+            const url = 'https://shotbow.net/forum/stats/annihilation/' + username;
+
+            const embedObject = new EmbedBuilder()
+            .setTitle('Annihilation Stats')
+            .setAuthor({ name: username + '\'s Stats', url: url })
+            .setThumbnail(headurl)
+            .addFields(
+                { name: 'PlayTime', value: playTimeHours.toString() + ' hours' },
+                { name: 'Win - Lose', value: winlose.replace(':', ' - ') + '\nWin Rate: ' + winrate + '%' },
+                { name: 'Kills', value: 'Melee Kills: ' + meleekills + '\nBow Kills: ' + bowkills },
+                { name: 'Other Stats', value: 'Nexus Damages: ' + nexusdmg + '\nOres Mined: ' + oremined }
+            )
+            .setFooter({ text: 'Info from Shotbow.net', iconURL: 'https://shotbow.net/forum/styles/fusiongamer/xenforo/avatars/avatar_l.png' });
+            interaction.editReply({embeds: [embedObject]});
+        });
+
+        /*
         const browser = await puppeteer.launch({
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
@@ -221,9 +277,9 @@ client.on('interactionCreate', async (interaction) => {
                 { name: 'Other Stats', value: 'Nexus Damages: ' + data[3][3] + '\nOres Mined: ' + data[3][4] }
             )
             .setFooter({ text: 'Info from Shotbow.net', iconURL: 'https://shotbow.net/forum/styles/fusiongamer/xenforo/avatars/avatar_l.png' });
-
-        await interaction.editReply({embeds: [embedObject]});
+        */
     }
+
     if (interaction.commandName === 'namemc') {
         await interaction.deferReply();
         let username = interaction.options.getString('mcid');
