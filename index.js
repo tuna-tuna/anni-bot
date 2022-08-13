@@ -1,6 +1,8 @@
 const mineflayer = require('mineflayer');
+const fs = require('fs');
 const { default: axios } = require('axios');
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { exec } = require('child_process');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
 const { MCUN, MCPW, TOKEN, BROWSERLESS_TOKEN } = process.env
@@ -38,6 +40,22 @@ client.once('ready', async () => {
         {
             name: 'players',
             description: 'View Current Players',
+        },
+        {
+            name: 'vote',
+            description: 'Vote for map in certain vote',
+            options: [{
+                type: 3,
+                name: 'slot',
+                description: 'Enter slot number (1~9).',
+                required: true
+            },
+            {
+                type: 3,
+                name: 'map',
+                description: 'Enter map name',
+                required: true
+            }]
         }
     ];
     await client.application.commands.set(data);
@@ -56,17 +74,17 @@ client.on('interactionCreate', async (interaction) => {
             let fieldsRaw = [];
             let fieldRaw = {};
             let embedObject = {};
+            const bot = mineflayer.createBot({
+                host: 'play.shotbow.net',
+                username: MCUN,
+                password: MCPW,
+                auth: 'microsoft',
+                version: '1.12.2',
+                viewDistance: 'tiny'
+            });
             const getMatch = new Promise((resolve, reject) => {
                 let reopen = false;
                 isWorking = true;
-                const bot = mineflayer.createBot({
-                    host: 'play.shotbow.net',
-                    username: MCUN,
-                    password: MCPW,
-                    auth: 'microsoft',
-                    version: '1.12.2',
-                    viewDistance: 'tiny'
-                });
 
                 // for debug
                 bot.on('kicked', console.log)
@@ -83,7 +101,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
         
                 bot.on('windowOpen', async (window) => {
-                    //console.log('window opened');
+                    //console.log('window opened, 1');
                     //console.log(window.title);
                     if (window.title === '{"text":"Server Selector"}') {
                         //console.log('clicking');
@@ -114,6 +132,7 @@ client.on('interactionCreate', async (interaction) => {
                                     matchData['Phase'] = formatPhaseText(phaseRaw);
                                     let serverRaw = item.nbt.value.display.value.Name.value;
                                     matchData['Server'] = formatServerName(serverRaw);
+                                    matchData['SlotNum'] = item.slot;
                                     let matchDataCopy = {};
                                     matchList.push(Object.assign(matchDataCopy, matchData));
                                 }
@@ -178,9 +197,41 @@ client.on('interactionCreate', async (interaction) => {
                     title: 'Matches',
                     fields: fieldsRaw
                 };
-            }).then(() => {
                 interaction.editReply({ embeds: [embedObject] });
+                //bot.end();
             });
+                
+                /*.then((data) => {
+                console.log(data);
+                let loopstate = true;
+                const getDetail = new Promise((resolve, reject) => {
+                    data.map((vote) => {
+                        if (vote['Joinablility'] === 'All') {
+                            bot.on('windowOpen', (window) => {
+                                console.log('window opened, 2');
+                                bot.simpleClick.leftMouse(vote['SlotNum']);
+                            });
+
+                            bot.once('spawn', () => {
+                                console.log('spawn, 2');
+                                bot.chat('/team v');
+                                setTimeout(() => {
+                                    bot.chat('/al');
+                                    loopstate = false;
+                                }, 1000);
+                            });
+
+                            bot.on('message', (message) => {
+                                console.log(message.toAnsi());
+                            })
+                        
+                            bot.simpleClick.leftMouse(22);
+                            loopstate = true;
+                            while(loopstate){}
+                        }
+                    });
+                })
+            })*/
         }
     }
 
@@ -345,6 +396,49 @@ client.on('interactionCreate', async (interaction) => {
             
             interaction.editReply({ embeds: [embedObject] });
         });
+    }
+
+    if (interaction.commandName === 'vote') {
+        if (isWorking === true) {
+            await interaction.reply('Bot is busy now! Try again later!');
+        } else if (isWorking === false) {
+            await interaction.deferReply();
+            isWorking = true;
+            slotnum = parseInt(interaction.options.getString('slot')) - 1;
+            mapName = interaction.options.getString('map');
+            taskString = `send /al\nwait 25\nuseitem\nwait 5\ninventory c drop ${slotnum}\nwait 50\nsend /vote ${mapName}\nwait 50\nexit`;
+            fs.writeFile('./MCC/tasks.txt', taskString, (err) => {
+                if (err) {
+                    console.log(err);
+                    interaction.editReply('Error occurred while voting for map.');
+                } else {
+                    if (process.platform === 'win32') {
+                        exec('run.bat', (error, stdout, stderr) => {
+                            if (error) {
+                                console.log(error);
+                                console.log(stderr);
+                                interaction.editReply('Error occurred while voting for map.');
+                            } else {
+                                interaction.editReply('Done');
+                                console.log(stdout);
+                            }
+                        });
+                    } else if (process.platform === 'linux') {
+                        exec('run.sh', (error, stdout, stderr) => {
+                            if (error) {
+                                console.log(error);
+                                console.log(stderr);
+                                interaction.editReply('Error occurred while voting for map.');
+                            } else {
+                                interaction.editReply('Done');
+                                console.log(stdout);
+                            }
+                        });
+                    }
+                }
+                isWorking = false;
+            });
+        }
     }
 });
 
