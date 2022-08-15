@@ -545,6 +545,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId.startsWith('Vote')) {
         await interaction.deferReply();
         const slotnum = parseInt(interaction.customId.replace('Vote', ''));
+        isWorking = true;
         const bot = mineflayer.createBot({
             host: 'play.shotbow.net',
             username: MCUN,
@@ -724,6 +725,7 @@ client.on('interactionCreate', async (interaction) => {
                 bot.closeWindow(window);
             });
         }).then((data) => {
+            isWorking = false;
             if (typeof (data) === 'string') {
                 if (data === 'Busy') {
                     interaction.editReply({ content: 'Server is busy now.' });
