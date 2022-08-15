@@ -1,13 +1,13 @@
 const mineflayer = require('mineflayer');
 const fs = require('fs');
 const { default: axios } = require('axios');
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed } = require('discord.js');
 const { exec } = require('child_process');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
 const { MCUN, MCPW, TOKEN, BROWSERLESS_TOKEN } = process.env
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
 let isWorking = false;
 
@@ -130,6 +130,11 @@ client.on('interactionCreate', async (interaction) => {
                                     matchData['Players'] = item.nbt.value.display.value.Lore.value.value[1];
                                     let phaseRaw = item.nbt.value.display.value.Lore.value.value[2];
                                     matchData['Phase'] = formatPhaseText(phaseRaw);
+                                    if (matchData['Phase'] === 'Waiting For Players...' || matchData['Phase'].startsWith('Starts in')) {
+                                        matchData['Voting'] = true;
+                                    } else {
+                                        matchData['Voting'] = false;
+                                    }
                                     let serverRaw = item.nbt.value.display.value.Name.value;
                                     matchData['Server'] = formatServerName(serverRaw);
                                     matchData['SlotNum'] = item.slot;
@@ -158,7 +163,7 @@ client.on('interactionCreate', async (interaction) => {
                     } else if (phaseRaw.startsWith('§aPhase')) { // before Phase 3
                         phaseRaw = phaseRaw.replace('§a', '');
                     } else if (phaseRaw === '§aPre game') { // before vote
-                        phaseRaw = 'Before Voting';
+                        phaseRaw = 'Waiting For Players...';
                     } else if (phaseRaw.startsWith('§aStarts in')) {
                         phaseRaw = phaseRaw.replace('§a', '') + ' seconds';
                     } else if (phaseRaw === '§eEnding') {
@@ -180,6 +185,8 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }).then((data) => {
                 //console.log(data);
+                let voteNum = 1;
+                const row = new ActionRowBuilder();
                 data.map((server) => {
                     let name = server['Server'];
                     let value = '';
@@ -188,17 +195,33 @@ client.on('interactionCreate', async (interaction) => {
                     } else {
                         value = '```Map:     ' + server['Map'] + '\nPlayers: ' + server['Players'] + '\nState:   ' + server['Phase'] + '```';
                     }
-                    fieldRaw['name'] = name;
+                    fieldRaw['name'] = voteNum + ' - ' + name;
                     fieldRaw['value'] = value;
                     let fieldCopy = {};
                     fieldsRaw.push(Object.assign(fieldCopy, fieldRaw));
+                    if (server['Joinablility'] === 'All') {
+                        row.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId('Vote' + voteNum)
+                                .setLabel(voteNum.toString())
+                                .setStyle(ButtonStyle.Primary)
+                        );
+                    } else {
+                        row.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId('Vote' + voteNum)
+                                .setLabel(voteNum.toString())
+                                .setStyle(ButtonStyle.Secondary)
+                                .setDisabled(true)
+                        );
+                    }
+                    voteNum++;
                 });
                 embedObject = {
                     title: 'Matches',
                     fields: fieldsRaw
                 };
-                interaction.editReply({ embeds: [embedObject] });
-                //bot.end();
+                interaction.editReply({ embeds: [embedObject], components: [row] });
             });
                 
                 /*.then((data) => {
@@ -404,9 +427,9 @@ client.on('interactionCreate', async (interaction) => {
         } else if (isWorking === false) {
             await interaction.deferReply();
             isWorking = true;
-            slotnum = parseInt(interaction.options.getString('slot')) - 1;
-            mapName = interaction.options.getString('map');
-            taskString = `send /al\nwait 25\nuseitem\nwait 5\ninventory c drop ${slotnum}\nwait 50\nsend /vote ${mapName}\nwait 50\nexit`;
+            const slotnum = parseInt(interaction.options.getString('slot')) - 1;
+            const mapName = interaction.options.getString('map');
+            /*taskString = `send /al\nwait 25\nuseitem\nwait 5\ninventory c drop ${slotnum}\nwait 50\nsend /vote ${mapName}\nwait 50\nexit`;
             fs.writeFile('./MCC/tasks.txt', taskString, (err) => {
                 if (err) {
                     console.log(err);
@@ -437,8 +460,346 @@ client.on('interactionCreate', async (interaction) => {
                     }
                 }
                 isWorking = false;
+            });*/
+            const bot = mineflayer.createBot({
+                host: 'play.shotbow.net',
+                username: MCUN,
+                password: MCPW,
+                auth: 'microsoft',
+                version: '1.12.2',
+                viewDistance: 'tiny'
+            });
+            const getMatch = new Promise((resolve, reject) => {
+                let isConnected = false;
+                const voteText = '/vote ' + mapName;
+                
+                // for debug
+                bot.on('kicked', (reason, loggedIn) => {
+                    if (reason === '{"text":"Too many players joining at once! Try again in a few seconds."}') {
+                        bot.end();
+                        resolve('Busy');
+                    }
+                })
+        
+                bot.on('spawn', async () => {
+                    setTimeout(() => {
+                        bot.chat(voteText);
+                        if (isConnected === false) {
+                            if (bot.spawnPoint.x === 80 && bot.spawnPoint.y === 80 && bot.spawnPoint.z === 9) {
+                                bot.chat('/al');
+                            } else if (bot.spawnPoint.x === -1140 && bot.spawnPoint.y === 74 && bot.spawnPoint.z === -3213) {
+                                bot.setQuickBarSlot(0);
+                                bot.activateItem();
+                                wait(500);
+                                bot.deactivateItem();
+                            }
+                        }
+                    }, 1500);
+                    console.log('spawn');
+                });
+
+                bot.on('message', message => {
+                    const chattext = message.getText();
+                    console.log(chattext);
+                    if (chattext.includes('There is no active vote right now.') === true) {
+                        bot.end();
+                        resolve('NoVote');
+                    }
+                    if (chattext.includes('Disconnected: You may only join games that are in progress if you were playing and got disconnected.') === true) {
+                        bot.end();
+                        resolve('Error');
+                    }
+                    if (chattext.includes('Unable to connect to ANNILOBBY_') === true) {
+                        bot.end();
+                        resolve('Error');
+                    }
+                })
+        
+                bot.on('windowOpen', (window) => {
+                    console.log('window opened');
+                    if (window.title === '{"text":"§7|§0Select Server§7|"}') {
+                        bot.clickWindow(slotnum, 0, 0);
+                        isConnected = true;
+                    }
+                    bot.closeWindow(window);
+                });
+            }).then((data) => {
+                isWorking = false;
+                if (data === 'Success') {
+                    interaction.editReply({ content: 'Done' });
+                } else if (data === 'NoVote') {
+                    interaction.editReply({ content: 'No vote available for this match!' });
+                } else if (data === 'Busy') {
+                    interaction.editReply({ content: 'Server is busy now! Try again in a moment please!' });
+                } else if (data === 'Error') {
+                    interaction.editReply({ content: 'Something went wrong! Try again later!' });
+                }
             });
         }
+    }
+});
+
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    // TODO disable the button after pressed
+    if (interaction.customId.startsWith('Vote')) {
+        await interaction.deferReply();
+        const slotnum = parseInt(interaction.customId.replace('Vote', ''));
+        const bot = mineflayer.createBot({
+            host: 'play.shotbow.net',
+            username: MCUN,
+            password: MCPW,
+            auth: 'microsoft',
+            version: '1.12.2',
+            viewDistance: 'tiny'
+        });
+        const getMatch = new Promise((resolve, reject) => {
+            let isConnected = false;
+            let playersInfo = [];
+            let mapName = '';
+            let nexus = {
+                red: '',
+                blue: '',
+                yellow: '',
+                green: ''
+            };
+            let state;
+    
+            // for debug
+            bot.on('kicked', (reason, loggedIn) => {
+                if (reason === '{"text":"Too many players joining at once! Try again in a few seconds."}') {
+                    bot.end();
+                    resolve('Busy');
+                }
+            })
+    
+            bot.on('spawn', async () => {
+                setTimeout(() => {
+                    bot.chat('/team v');
+                    //console.dir(bot.scoreboard, {depth: null});
+                    if (isConnected === false) {
+                        if (bot.spawnPoint.x === 80 && bot.spawnPoint.y === 80 && bot.spawnPoint.z === 9) {
+                            bot.chat('/al');
+                        } else if (bot.spawnPoint.x === -1140 && bot.spawnPoint.y === 74 && bot.spawnPoint.z === -3213) {
+                            bot.setQuickBarSlot(0);
+                            bot.activateItem();
+                            wait(500);
+                            bot.deactivateItem();
+                        }
+                    }
+                }, 1500);
+                console.log('spawn');
+            });
+
+            bot.once('bossBarUpdated', (bossbar) => {
+                state = bossbar.title.extra[0].text;
+            });
+    
+            bot.on('message', message => {
+                //console.log(message.getText());
+                let chattext = message.getText();
+                let players = {};
+                if (/^Team\s(Red|Blue|Yellow|Green)\shas\s[0-9]{1,2}\sonline/.test(chattext)) {
+                    if (chattext.startsWith('Team Red has ')) {
+                        // queued
+                        if (/^Team\sRed\shas\s[0-9]{1,2}\sonline,\sand\s[0-9]{1,2}\squeued\splayers/.test(chattext)) {
+                            chattext = chattext.replace('Team Red has ', '').replace(' online', '').replace(' and ', '').replace(' queued players', '');
+                            const playerinfo = chattext.split(',');
+                            players = {
+                                team: 'Red',
+                                queued: true,
+                                players: playerinfo[0],
+                                queuedPlayers: playerinfo[1]
+                            }
+                        } else {
+                            chattext = chattext.replace('Team Red has ', '').replace(' online players', '');
+                            players = {
+                                team: 'Red',
+                                queued: false,
+                                players: chattext
+                            }
+                        }
+                    } else if (chattext.startsWith('Team Blue has ')) {
+                        // queued
+                        if (/^Team\sBlue\shas\s[0-9]{1,2}\sonline,\sand\s[0-9]{1,2}\squeued\splayers/.test(chattext)) {
+                            chattext = chattext.replace('Team Blue has ', '').replace(' online', '').replace(' and ', '').replace(' queued players', '');
+                            const playerinfo = chattext.split(',');
+                            players = {
+                                team: 'Blue',
+                                queued: true,
+                                players: playerinfo[0],
+                                queuedPlayers: playerinfo[1]
+                            }
+                        } else {
+                            chattext = chattext.replace('Team Blue has ', '').replace(' online players', '');
+                            players = {
+                                team: 'Blue',
+                                queued: false,
+                                players: chattext
+                            }
+                        }
+                    } else if (chattext.startsWith('Team Green has ')) {
+                        // queued
+                        if (/^Team\sGreen\shas\s[0-9]{1,2}\sonline,\sand\s[0-9]{1,2}\squeued\splayers/.test(chattext)) {
+                            chattext = chattext.replace('Team Green has ', '').replace(' online', '').replace(' and ', '').replace(' queued players', '');
+                            const playerinfo = chattext.split(',');
+                            players = {
+                                team: 'Green',
+                                queued: true,
+                                players: playerinfo[0],
+                                queuedPlayers: playerinfo[1]
+                            }
+                        } else {
+                            chattext = chattext.replace('Team Green has ', '').replace(' online players', '');
+                            players = {
+                                team: 'Green',
+                                queued: false,
+                                players: chattext
+                            }
+                        }
+                    } else if (chattext.startsWith('Team Yellow has ')) {
+                        // queued
+                        if (/^Team\sYellow\shas\s[0-9]{1,2}\sonline,\sand\s[0-9]{1,2}\squeued\splayers/.test(chattext)) {
+                            chattext = chattext.replace('Team Yellow has ', '').replace(' online', '').replace(' and ', '').replace(' queued players', '');
+                            const playerinfo = chattext.split(',');
+                            players = {
+                                team: 'Yellow',
+                                queued: true,
+                                players: playerinfo[0],
+                                queuedPlayers: playerinfo[1]
+                            }
+                        } else {
+                            chattext = chattext.replace('Team Yellow has ', '').replace(' online players', '');
+                            players = {
+                                team: 'Yellow',
+                                queued: false,
+                                players: chattext
+                            }
+                        }
+                    }
+                    let playerscopy = {};
+                    playersInfo.push(Object.assign(playerscopy, players));
+    
+                    // scoreboard things
+                    for (let index = 8; index >= 0; index--) {
+                        const indexstr = '§' + index.toString() + '§r';
+                        const element = bot.scoreboards.anninexus.itemsMap[indexstr].displayName;
+                        if (index === 3 || index === 4 || index === 5 || index === 6) {    // nexus
+                            let team = element.json.color;
+                            element.extra.map((chatelement) => {
+                                if ('extra' in chatelement.json) {
+                                    if (/^[0-9]{1,3}/.test(chatelement.json.extra[0].text)) {
+                                        nexus[team] = chatelement.json.extra[0].text;
+                                    }
+                                } else if (/^[0-9]{1,3}/.test(chatelement.json.text)) {
+                                    nexus[team] = chatelement.json.text;
+                                }
+                            })
+                        }
+                    }
+                }
+                if (chattext.includes('/Team join (name)') === true) {
+                    bot.end();
+                    resolve([playersInfo, nexus, state]);
+                }
+                if (chattext.includes('Disconnected: You may only join games that are in progress if you were playing and got disconnected.') === true) {
+                    bot.end();
+                    resolve('Error');
+                }
+                if (chattext.includes('Unable to connect to ANNILOBBY_') === true) {
+                    bot.end();
+                    resolve('Error');
+                }
+            })
+    
+            bot.on('windowOpen', (window) => {
+                console.log('window opened');
+                if (window.title === '{"text":"§7|§0Select Server§7|"}') {
+                    console.log('Click Window');
+                    console.log(slotnum);
+                    bot.clickWindow(slotnum - 1, 0, 0);
+                    isConnected = true;
+                    //bot.end();
+                }
+                bot.closeWindow(window);
+            });
+        }).then((data) => {
+            if (typeof (data) === 'string') {
+                if (data === 'Busy') {
+                    interaction.editReply({ content: 'Server is busy now.' });
+                } else {
+                    interaction.editReply({ content: 'Error!' });
+                }
+            } else {
+                console.log(data);
+                const oldEmbed = interaction.message.embeds[0].data.fields[slotnum - 1];
+                const info = oldEmbed.value.split('\n');
+                let mapName;
+                let beforeVote = false;
+                if (info[0].startsWith('```Map:')) {
+                    mapName = info[0].replace('```Map:     ', '');
+                } else {
+                    mapName = info[0].replace('```Voting:', '');
+                    beforeVote = true;
+                }
+                const voteName = oldEmbed.name.replace(slotnum + ' - ', '');
+                const players = info[1];
+                const gamestate = data[2];
+                console.log(data[0]);
+                // Players List
+                let redPlayers;
+                let bluePlayers;
+                let greenPlayers;
+                let yellowPlayers;
+                data[0].map((teamv) => {
+                    if (teamv['team'] === 'Red') {
+                        if (teamv['queued'] === true) {
+                            redPlayers = ':red_square: Red Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                        } else {
+                            redPlayers = ':red_square: Red Players: ' + teamv['players'] + ' players';
+                        }
+                    }
+                    if (teamv['team'] === 'Blue') {
+                        if (teamv['queued'] === true) {
+                            bluePlayers = ':blue_square: Blue Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                        } else {
+                            bluePlayers = ':blue_square: Blue Players: ' + teamv['players'] + ' players';
+                        }
+                    }
+                    if (teamv['team'] === 'Green') {
+                        if (teamv['queued'] === true) {
+                            greenPlayers = ':green_square: Green Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                        } else {
+                            greenPlayers = ':green_square: Green Players: ' + teamv['players'] + ' players';
+                        }
+                    }
+                    if (teamv['team'] === 'Yellow') {
+                        if (teamv['queued'] === true) {
+                            yellowPlayers = ':yellow_square: Yellow Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                        } else {
+                            yellowPlayers = ':yellow_square: Yellow Players: ' + teamv['players'] + ' players';
+                        }
+                    }
+                });
+                const playersStr = redPlayers + '\n' + bluePlayers + '\n' + greenPlayers + '\n' + yellowPlayers;
+                const embedObject = new EmbedBuilder()
+                    .setTitle(voteName)
+                    .setDescription('Map: ' + mapName + '\n' + players + '\nCurrent Game State: ' + gamestate)
+                    .addFields({
+                        name: 'Players',
+                        value: playersStr
+                    });
+                if (beforeVote === false) {
+                    embedObject.addFields(
+                        {
+                            name: 'Nexus',
+                            value: ':red_square: Red Nexus: ' + data[1]['red'] + '\n:blue_square: Blue Nexus: ' + data[1]['blue'] + '\n:green_square: Green Nexus: ' + data[1]['green'] + '\n:yellow_square: Yellow Nexus: ' + data[1]['yellow']
+                        }
+                    )
+                }
+                interaction.editReply({ embeds: [embedObject] });
+            }
+        });
     }
 });
 
