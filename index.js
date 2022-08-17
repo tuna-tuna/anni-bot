@@ -1,8 +1,6 @@
 const mineflayer = require('mineflayer');
-const fs = require('fs');
 const { default: axios } = require('axios');
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed } = require('discord.js');
-const { exec } = require('child_process');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
 const { MCUN, MCPW, TOKEN, BROWSERLESS_TOKEN } = process.env
@@ -87,7 +85,24 @@ client.on('interactionCreate', async (interaction) => {
                 isWorking = true;
 
                 // for debug
-                bot.on('kicked', console.log)
+                bot.on('kicked', (reason, loggedIn) => {
+                    if (reason === '{"text":"Too many players joining at once! Try again in a few seconds."}') {
+                        bot.end();
+                        resolve('Busy');
+                    }
+                });
+
+                bot.on('message', message => {
+                    const chattext = message.getText();
+                    if (chattext.includes('Disconnected: You may only join games that are in progress if you were playing and got disconnected.') === true) {
+                        bot.end();
+                        resolve('Error');
+                    }
+                    if (chattext.includes('Unable to connect to ANNILOBBY_') === true) {
+                        bot.end();
+                        resolve('Error');
+                    }
+                })
         
                 bot.on('spawn', async () => {
                     setTimeout(() => {
@@ -101,10 +116,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
         
                 bot.on('windowOpen', async (window) => {
-                    //console.log('window opened, 1');
-                    //console.log(window.title);
                     if (window.title === '{"text":"Server Selector"}') {
-                        //console.log('clicking');
                         connectAnni();
                     } else if (window.title === '{"text":"§7|§0Select Server§7|"}') {
                         if (reopen === false) {
@@ -114,8 +126,6 @@ client.on('interactionCreate', async (interaction) => {
                         } else {
                             let matchList = [];
                             let matchData = {};
-                            //console.log('opened anni vote menu');
-                            //console.log(window.slots);
                             window.slots.map((item) => {
                                 if (item !== null && item.slot < 9) {
                                     if (item.displayName === 'Lime Dye') {
@@ -142,7 +152,6 @@ client.on('interactionCreate', async (interaction) => {
                                     matchList.push(Object.assign(matchDataCopy, matchData));
                                 }
                             });
-                            //console.log(matchList);
                             bot.end();
                             isWorking = false;
                             resolve(matchList);
@@ -175,7 +184,7 @@ client.on('interactionCreate', async (interaction) => {
                 function formatMapText(mapRaw) {
                     if (mapRaw.startsWith('Map:')) {
                         mapRaw = mapRaw.replace('Map: ', '');
-                    } // add voting?
+                    }
                     return mapRaw;
                 }
         
@@ -184,77 +193,53 @@ client.on('interactionCreate', async (interaction) => {
                     return serverRaw;
                 }
             }).then((data) => {
-                //console.log(data);
-                let voteNum = 1;
-                const row = new ActionRowBuilder();
-                data.map((server) => {
-                    let name = server['Server'];
-                    let value = '';
-                    if (server['Map'].startsWith('Voting:')) {
-                        value = '```' + server['Map'] + '\nPlayers: ' + server['Players'] + '\nState: ' + server['Phase'] + '```';
+                if (typeof (data) === 'string') {
+                    isWorking = false;
+                    if (data === 'Busy') {
+                        interaction.editReply({ content: 'Server is busy now.' });
                     } else {
-                        value = '```Map:     ' + server['Map'] + '\nPlayers: ' + server['Players'] + '\nState:   ' + server['Phase'] + '```';
+                        interaction.editReply({ content: 'Error!' });
                     }
-                    fieldRaw['name'] = voteNum + ' - ' + name;
-                    fieldRaw['value'] = value;
-                    let fieldCopy = {};
-                    fieldsRaw.push(Object.assign(fieldCopy, fieldRaw));
-                    if (server['Joinablility'] === 'All') {
-                        row.addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('Vote' + voteNum)
-                                .setLabel(voteNum.toString())
-                                .setStyle(ButtonStyle.Primary)
-                        );
-                    } else {
-                        row.addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('Vote' + voteNum)
-                                .setLabel(voteNum.toString())
-                                .setStyle(ButtonStyle.Secondary)
-                                .setDisabled(true)
-                        );
-                    }
-                    voteNum++;
-                });
-                embedObject = {
-                    title: 'Matches',
-                    fields: fieldsRaw
-                };
-                interaction.editReply({ embeds: [embedObject], components: [row] });
-            });
-                
-                /*.then((data) => {
-                console.log(data);
-                let loopstate = true;
-                const getDetail = new Promise((resolve, reject) => {
-                    data.map((vote) => {
-                        if (vote['Joinablility'] === 'All') {
-                            bot.on('windowOpen', (window) => {
-                                console.log('window opened, 2');
-                                bot.simpleClick.leftMouse(vote['SlotNum']);
-                            });
-
-                            bot.once('spawn', () => {
-                                console.log('spawn, 2');
-                                bot.chat('/team v');
-                                setTimeout(() => {
-                                    bot.chat('/al');
-                                    loopstate = false;
-                                }, 1000);
-                            });
-
-                            bot.on('message', (message) => {
-                                console.log(message.toAnsi());
-                            })
-                        
-                            bot.simpleClick.leftMouse(22);
-                            loopstate = true;
-                            while(loopstate){}
+                } else {
+                    let voteNum = 1;
+                    const row = new ActionRowBuilder();
+                    data.map((server) => {
+                        let name = server['Server'];
+                        let value = '';
+                        if (server['Map'].startsWith('Voting:')) {
+                            value = '```' + server['Map'] + '\nPlayers: ' + server['Players'] + '\nState: ' + server['Phase'] + '```';
+                        } else {
+                            value = '```Map:     ' + server['Map'] + '\nPlayers: ' + server['Players'] + '\nState:   ' + server['Phase'] + '```';
                         }
+                        fieldRaw['name'] = voteNum + ' - ' + name;
+                        fieldRaw['value'] = value;
+                        let fieldCopy = {};
+                        fieldsRaw.push(Object.assign(fieldCopy, fieldRaw));
+                        if (server['Joinablility'] === 'All') {
+                            row.addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('Vote' + voteNum)
+                                    .setLabel(voteNum.toString())
+                                    .setStyle(ButtonStyle.Primary)
+                            );
+                        } else {
+                            row.addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('Vote' + voteNum)
+                                    .setLabel(voteNum.toString())
+                                    .setStyle(ButtonStyle.Secondary)
+                                    .setDisabled(true)
+                            );
+                        }
+                        voteNum++;
                     });
-                })
-            })*/
+                    embedObject = {
+                        title: 'Matches',
+                        fields: fieldsRaw
+                    };
+                    interaction.editReply({ embeds: [embedObject], components: [row] });
+                }
+            });
         }
     }
 
@@ -314,47 +299,6 @@ client.on('interactionCreate', async (interaction) => {
             .setFooter({ text: 'Info from Shotbow.net', iconURL: 'https://shotbow.net/forum/styles/fusiongamer/xenforo/avatars/avatar_l.png' });
             interaction.editReply({embeds: [embedObject]});
         });
-
-        /*
-        const browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        const page = await browser.newPage();
-        const url = 'https://shotbow.net/forum/stats/annihilation/' + username;
-        await page.goto(url, { waitUntil: 'networkidle0' });
-        data = await page.evaluate(() => {
-            let headurl = document.querySelector('td.gamestats-playertable-avatar>img').src;
-            let playtime = document.querySelector('td.gamestats-playertable-time').innerHTML;
-            let winlose = document.querySelector('td.gamestats-playertable-WL>strong').innerHTML;
-            let statsel = document.querySelectorAll('td.gamestats-playertable-stat-total');
-            let stats = [];
-            statsel.forEach((element) => {
-                stats.push(element.innerHTML);
-            });
-            return [headurl, playtime, winlose, stats];
-        });
-        // stats: 'Total', bow kills, melee kills, nexus damage, ore mined        
-        await browser.close();
-
-        const formattedPT = data[1].replace('Time Played:\n', '').replace('\n', '');
-        const playTimeList = formattedPT.match(/[0-9]+/g);
-        const playTimeHours = parseInt(playTimeList[0]) * 24 + parseInt(playTimeList[1]);
-
-        const winloseList = data[2].match(/[0-9]+/g);
-        const winrate = Math.round((parseInt(winloseList[0]) / (parseInt(winloseList[0]) + parseInt(winloseList[1]))) * 1000) / 10;
-
-        const embedObject = new EmbedBuilder()
-            .setTitle('Annihilation Stats')
-            .setAuthor({ name: username + '\'s Stats', url: url })
-            .setThumbnail(data[0])
-            .addFields(
-                { name: 'PlayTime', value: playTimeHours.toString() + ' hours' },
-                { name: 'Win - Lose', value: data[2].replace(':', ' - ') + '\nWin Rate: ' + winrate + '%' },
-                { name: 'Kills', value: 'Melee Kills: ' + data[3][2] + '\nBow Kills: ' + data[3][1] },
-                { name: 'Other Stats', value: 'Nexus Damages: ' + data[3][3] + '\nOres Mined: ' + data[3][4] }
-            )
-            .setFooter({ text: 'Info from Shotbow.net', iconURL: 'https://shotbow.net/forum/styles/fusiongamer/xenforo/avatars/avatar_l.png' });
-        */
     }
 
     if (interaction.commandName === 'namemc') {
@@ -384,7 +328,6 @@ client.on('interactionCreate', async (interaction) => {
                     }
                     embedString += '```';
                     embedObject = new EmbedBuilder()
-                        //.setTitle('Name History')
                         .setAuthor({ name: username + '\'s Name History', url: 'https://ja.namemc.com/profile/' + uuid })
                         .setThumbnail('https://crafatar.com/avatars/' + uuid)
                         .addFields({ name: 'History', value: embedString });
@@ -429,38 +372,6 @@ client.on('interactionCreate', async (interaction) => {
             isWorking = true;
             const slotnum = parseInt(interaction.options.getString('slot')) - 1;
             const mapName = interaction.options.getString('map');
-            /*taskString = `send /al\nwait 25\nuseitem\nwait 5\ninventory c drop ${slotnum}\nwait 50\nsend /vote ${mapName}\nwait 50\nexit`;
-            fs.writeFile('./MCC/tasks.txt', taskString, (err) => {
-                if (err) {
-                    console.log(err);
-                    interaction.editReply('Error occurred while voting for map.');
-                } else {
-                    if (process.platform === 'win32') {
-                        exec('run.bat', (error, stdout, stderr) => {
-                            if (error) {
-                                console.log(error);
-                                console.log(stderr);
-                                interaction.editReply('Error occurred while voting for map.');
-                            } else {
-                                interaction.editReply('Done');
-                                console.log(stdout);
-                            }
-                        });
-                    } else if (process.platform === 'linux') {
-                        exec('run.sh', (error, stdout, stderr) => {
-                            if (error) {
-                                console.log(error);
-                                console.log(stderr);
-                                interaction.editReply('Error occurred while voting for map.');
-                            } else {
-                                interaction.editReply('Done');
-                                console.log(stdout);
-                            }
-                        });
-                    }
-                }
-                isWorking = false;
-            });*/
             const bot = mineflayer.createBot({
                 host: 'play.shotbow.net',
                 username: MCUN,
@@ -500,7 +411,10 @@ client.on('interactionCreate', async (interaction) => {
 
                 bot.on('message', message => {
                     const chattext = message.getText();
-                    console.log(chattext);
+                    if (chattext.includes('Voted for ' + mapName) === true) {
+                        bot.end();
+                        resolve('Success');
+                    }
                     if (chattext.includes('There is no active vote right now.') === true) {
                         bot.end();
                         resolve('NoVote');
@@ -513,7 +427,7 @@ client.on('interactionCreate', async (interaction) => {
                         bot.end();
                         resolve('Error');
                     }
-                })
+                });
         
                 bot.on('windowOpen', (window) => {
                     console.log('window opened');
@@ -526,7 +440,7 @@ client.on('interactionCreate', async (interaction) => {
             }).then((data) => {
                 isWorking = false;
                 if (data === 'Success') {
-                    interaction.editReply({ content: 'Done' });
+                    interaction.editReply({ content: `Successfully voted for ${mapName}` });
                 } else if (data === 'NoVote') {
                     interaction.editReply({ content: 'No vote available for this match!' });
                 } else if (data === 'Busy') {
@@ -565,6 +479,12 @@ client.on('interactionCreate', async (interaction) => {
                 green: ''
             };
             let state;
+            let teamslist = bot.teams;
+            let playerlist = [];
+            let redlist = [];
+            let bluelist = [];
+            let greenlist = [];
+            let yellowlist = [];
     
             // for debug
             bot.on('kicked', (reason, loggedIn) => {
@@ -572,12 +492,11 @@ client.on('interactionCreate', async (interaction) => {
                     bot.end();
                     resolve('Busy');
                 }
-            })
+            });
     
             bot.on('spawn', async () => {
                 setTimeout(() => {
                     bot.chat('/team v');
-                    //console.dir(bot.scoreboard, {depth: null});
                     if (isConnected === false) {
                         if (bot.spawnPoint.x === 80 && bot.spawnPoint.y === 80 && bot.spawnPoint.z === 9) {
                             bot.chat('/al');
@@ -597,7 +516,6 @@ client.on('interactionCreate', async (interaction) => {
             });
     
             bot.on('message', message => {
-                //console.log(message.getText());
                 let chattext = message.getText();
                 let players = {};
                 if (/^Team\s(Red|Blue|Yellow|Green)\shas\s[0-9]{1,2}\sonline/.test(chattext)) {
@@ -677,6 +595,33 @@ client.on('interactionCreate', async (interaction) => {
                                 players: chattext
                             }
                         }
+
+                        // playerlist things
+                        for (let key in bot.players) {
+                            if (bot.players.hasOwnProperty(key)) {
+                                if (bot.players[key]['username'] !== bot.username) {
+                                    playerlist.push(bot.players[key]['username']);
+                                }
+                            }
+                        }
+                        for (let key in teamslist) {
+                            if (teamslist.hasOwnProperty(key)) {
+                                if (key.startsWith('team') === false) {
+                                    for (let member in teamslist[key]['membersMap']) {
+                                        if (key === 'Red') {
+                                            redlist.push(member);
+                                        } else if (key === 'Blue') {
+                                            bluelist.push(member);
+                                        } else if (key === 'Green') {
+                                            greenlist.push(member);
+                                        } else if (key === 'Yellow') {
+                                            yellowlist.push(member);
+                                        }
+                                        playerlist = playerlist.filter(item => item !== member);
+                                    }
+                                }
+                            }
+                        }
                     }
                     let playerscopy = {};
                     playersInfo.push(Object.assign(playerscopy, players));
@@ -701,7 +646,7 @@ client.on('interactionCreate', async (interaction) => {
                 }
                 if (chattext.includes('/Team join (name)') === true) {
                     bot.end();
-                    resolve([playersInfo, nexus, state]);
+                    resolve([playersInfo, nexus, state, redlist, bluelist, greenlist, yellowlist, playerlist]);
                 }
                 if (chattext.includes('Disconnected: You may only join games that are in progress if you were playing and got disconnected.') === true) {
                     bot.end();
@@ -720,7 +665,6 @@ client.on('interactionCreate', async (interaction) => {
                     console.log(slotnum);
                     bot.clickWindow(slotnum - 1, 0, 0);
                     isConnected = true;
-                    //bot.end();
                 }
                 bot.closeWindow(window);
             });
@@ -733,7 +677,6 @@ client.on('interactionCreate', async (interaction) => {
                     interaction.editReply({ content: 'Error!' });
                 }
             } else {
-                console.log(data);
                 const oldEmbed = interaction.message.embeds[0].data.fields[slotnum - 1];
                 const info = oldEmbed.value.split('\n');
                 let mapName;
@@ -747,7 +690,6 @@ client.on('interactionCreate', async (interaction) => {
                 const voteName = oldEmbed.name.replace(slotnum + ' - ', '');
                 const players = info[1];
                 const gamestate = data[2];
-                console.log(data[0]);
                 // Players List
                 let redPlayers;
                 let bluePlayers;
@@ -799,6 +741,47 @@ client.on('interactionCreate', async (interaction) => {
                         }
                     )
                 }
+                let redstr = '```';
+                let bluestr = '```';
+                let greenstr = '```';
+                let yellowstr = '```';
+                let playerstr = '```';
+                data[3].map((player) => {
+                    redstr += player + ', '
+                });
+                data[4].map((player) => {
+                    bluestr += player + ', '
+                });
+                data[5].map((player) => {
+                    greenstr += player + ', '
+                });
+                data[6].map((player) => {
+                    yellowstr += player + ', '
+                });
+                data[7].map((player) => {
+                    playerstr += player + ', '
+                });
+                redstr = redstr.slice(0, -2) + '```';
+                bluestr = bluestr.slice(0, -2) + '```';
+                greenstr = greenstr.slice(0, -2) + '```';
+                yellowstr = yellowstr.slice(0, -2) + '```';
+                playerstr = playerstr.slice(0, -2) + '```';
+                embedObject.addFields({
+                    name: ':red_square: Red Players',
+                    value: redstr
+                }, {
+                    name: ':blue_square: Blue Players',
+                    value: bluestr
+                }, {
+                    name: ':green_square: Green Players',
+                    value: greenstr
+                }, {
+                    name: ':yellow_square: Yellow Players',
+                    value: yellowstr
+                }, {
+                    name: ':compass: Lobby Players',
+                    value: playerstr
+                });
                 interaction.editReply({ embeds: [embedObject] });
             }
         });
