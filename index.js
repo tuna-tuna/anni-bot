@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer');
 const { default: axios } = require('axios');
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Embed, SelectMenuBuilder } = require('discord.js');
 const wait = require('util').promisify(setTimeout);
 require('dotenv').config();
 const { MCUN, MCPW, TOKEN, BROWSERLESS_TOKEN } = process.env
@@ -203,6 +203,7 @@ client.on('interactionCreate', async (interaction) => {
                 } else {
                     let voteNum = 1;
                     const row = new ActionRowBuilder();
+                    let voterow;
                     data.map((server) => {
                         let name = server['Server'];
                         let value = '';
@@ -231,13 +232,35 @@ client.on('interactionCreate', async (interaction) => {
                                     .setDisabled(true)
                             );
                         }
+                        if (server['Voting'] === true) {
+                            voterow = new ActionRowBuilder();
+                            const maps = server['Map'].replace('Voting:', '');
+                            voterow.addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(voteNum.toString() + 'SelectMap' + maps)
+                                    .setLabel('Vote for ' + name)
+                                    .setStyle(ButtonStyle.Success)
+                            );
+                        }
                         voteNum++;
                     });
                     embedObject = {
                         title: 'Matches',
                         fields: fieldsRaw
                     };
-                    interaction.editReply({ embeds: [embedObject], components: [row] });
+                    if (voterow) {
+                        interaction.editReply({ embeds: [embedObject], components: [row, voterow] }).then((message) => {
+                            setTimeout(() => {
+                                interaction.editReply({ embeds: [embedObject], components: [] });
+                            }, 60000);
+                        });
+                    } else {
+                        interaction.editReply({ embeds: [embedObject], components: [row] }).then((message) => {
+                            setTimeout(() => {
+                                interaction.editReply({ embeds: [embedObject], components: [] });
+                            }, 60000);
+                        });
+                    }
                 }
             });
         }
@@ -455,7 +478,7 @@ client.on('interactionCreate', async (interaction) => {
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
-    // TODO disable the button after pressed
+
     if (interaction.customId.startsWith('Vote')) {
         await interaction.deferReply();
         const slotnum = parseInt(interaction.customId.replace('Vote', ''));
@@ -677,6 +700,7 @@ client.on('interactionCreate', async (interaction) => {
                     interaction.editReply({ content: 'Error!' });
                 }
             } else {
+                interaction.message.edit({ components: [] });
                 const oldEmbed = interaction.message.embeds[0].data.fields[slotnum - 1];
                 const info = oldEmbed.value.split('\n');
                 let mapName;
@@ -786,6 +810,129 @@ client.on('interactionCreate', async (interaction) => {
             }
         });
     }
+
+    if (interaction.customId.includes('SelectMap')) {
+        const slotnum = parseInt(interaction.customId.slice(0, 1)) - 1;
+        const maps = interaction.customId.slice(10).split(', ');
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new SelectMenuBuilder()
+                    .setCustomId('MapVote' + slotnum.toString())
+                    .setPlaceholder('Select Map')
+                    .addOptions(
+                        {
+                            label: maps[0],
+                            value: maps[0]
+                        },
+                        {
+                            label: maps[1],
+                            value: maps[1]
+                        },
+                        {
+                            label: maps[2],
+                            value: maps[2]
+                        },
+                        {
+                            label: maps[3],
+                            value: maps[3]
+                        }
+                    )
+            );
+        await interaction.reply({ content: 'Select Map You want to Vote.', components: [row] });
+    }
 });
+
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isSelectMenu()) return;
+
+    if (interaction.customId.startsWith('MapVote')) {
+        console.log(interaction);
+        await interaction.deferUpdate();
+        const slotnum = parseInt(interaction.customId.replace('MapVote', ''));
+        const mapName = interaction.values[0];
+        if (isWorking === true) {
+            await interaction.editReply({content: 'Bot is busy now! Try again later!' });
+        } else if (isWorking === false) {
+            isWorking = true;
+            const bot = mineflayer.createBot({
+                host: 'play.shotbow.net',
+                username: MCUN,
+                password: MCPW,
+                auth: 'microsoft',
+                version: '1.12.2',
+                viewDistance: 'tiny'
+            });
+            const getMatch = new Promise((resolve, reject) => {
+                let isConnected = false;
+                const voteText = '/vote ' + mapName;
+                
+                // for debug
+                bot.on('kicked', (reason, loggedIn) => {
+                    if (reason === '{"text":"Too many players joining at once! Try again in a few seconds."}') {
+                        bot.end();
+                        resolve('Busy');
+                    }
+                })
+        
+                bot.on('spawn', async () => {
+                    setTimeout(() => {
+                        bot.chat(voteText);
+                        if (isConnected === false) {
+                            if (bot.spawnPoint.x === 80 && bot.spawnPoint.y === 80 && bot.spawnPoint.z === 9) {
+                                bot.chat('/al');
+                            } else if (bot.spawnPoint.x === -1140 && bot.spawnPoint.y === 74 && bot.spawnPoint.z === -3213) {
+                                bot.setQuickBarSlot(0);
+                                bot.activateItem();
+                                wait(500);
+                                bot.deactivateItem();
+                            }
+                        }
+                    }, 1500);
+                    console.log('spawn');
+                });
+
+                bot.on('message', message => {
+                    const chattext = message.getText();
+                    if (chattext.includes('Voted for ' + mapName) === true) {
+                        bot.end();
+                        resolve('Success');
+                    }
+                    if (chattext.includes('There is no active vote right now.') === true) {
+                        bot.end();
+                        resolve('NoVote');
+                    }
+                    if (chattext.includes('Disconnected: You may only join games that are in progress if you were playing and got disconnected.') === true) {
+                        bot.end();
+                        resolve('Error');
+                    }
+                    if (chattext.includes('Unable to connect to ANNILOBBY_') === true) {
+                        bot.end();
+                        resolve('Error');
+                    }
+                });
+        
+                bot.on('windowOpen', (window) => {
+                    console.log('window opened');
+                    if (window.title === '{"text":"§7|§0Select Server§7|"}') {
+                        bot.clickWindow(slotnum, 0, 0);
+                        isConnected = true;
+                    }
+                    bot.closeWindow(window);
+                });
+            }).then((data) => {
+                isWorking = false;
+                if (data === 'Success') {
+                    interaction.editReply({ content: `Successfully voted for ${mapName}`, components: [] });
+                } else if (data === 'NoVote') {
+                    interaction.editReply({ content: 'No vote available for this match!', components: [] });
+                } else if (data === 'Busy') {
+                    interaction.editReply({ content: 'Server is busy now! Try again in a moment please!' });
+                } else if (data === 'Error') {
+                    interaction.editReply({ content: 'Something went wrong! Try again later!' });
+                }
+            });
+        }
+    }
+})
 
 client.login(TOKEN);
