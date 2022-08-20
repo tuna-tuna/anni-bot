@@ -86,9 +86,13 @@ client.on('interactionCreate', async (interaction) => {
 
                 // for debug
                 bot.on('kicked', (reason, loggedIn) => {
+                    console.log(reason);
                     if (reason === '{"text":"Too many players joining at once! Try again in a few seconds."}') {
                         bot.end();
                         resolve('Busy');
+                    } else {
+                        bot.end();
+                        resolve('Error');
                     }
                 });
 
@@ -161,7 +165,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
             
                 function connectAnni() {
-                    bot.simpleClick.leftMouse(5);
+                    bot.simpleClick.leftMouse(0);
                 }
         
                 function formatPhaseText(phaseRaw) {
@@ -521,7 +525,7 @@ client.on('interactionCreate', async (interaction) => {
                 setTimeout(() => {
                     bot.chat('/team v');
                     if (isConnected === false) {
-                        if (bot.spawnPoint.x === 80 && bot.spawnPoint.y === 80 && bot.spawnPoint.z === 9) {
+                        if (bot.spawnPoint.x === -19 && bot.spawnPoint.y === 90 && bot.spawnPoint.z === 3) {
                             bot.chat('/al');
                         } else if (bot.spawnPoint.x === -1140 && bot.spawnPoint.y === 74 && bot.spawnPoint.z === -3213) {
                             bot.setQuickBarSlot(0);
@@ -685,7 +689,6 @@ client.on('interactionCreate', async (interaction) => {
                 console.log('window opened');
                 if (window.title === '{"text":"§7|§0Select Server§7|"}') {
                     console.log('Click Window');
-                    console.log(slotnum);
                     bot.clickWindow(slotnum - 1, 0, 0);
                     isConnected = true;
                 }
@@ -722,40 +725,40 @@ client.on('interactionCreate', async (interaction) => {
                 data[0].map((teamv) => {
                     if (teamv['team'] === 'Red') {
                         if (teamv['queued'] === true) {
-                            redPlayers = ':red_square: Red Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                            redPlayers = ':red_square: Red: ' + teamv['players'] + ' Players (' + teamv['queuedPlayers'] + ' Players Queued)';
                         } else {
-                            redPlayers = ':red_square: Red Players: ' + teamv['players'] + ' players';
+                            redPlayers = ':red_square: Red: ' + teamv['players'] + ' Players';
                         }
                     }
                     if (teamv['team'] === 'Blue') {
                         if (teamv['queued'] === true) {
-                            bluePlayers = ':blue_square: Blue Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                            bluePlayers = ':blue_square: Blue: ' + teamv['players'] + ' Players (' + teamv['queuedPlayers'] + ' Players Queued)';
                         } else {
-                            bluePlayers = ':blue_square: Blue Players: ' + teamv['players'] + ' players';
+                            bluePlayers = ':blue_square: Blue: ' + teamv['players'] + ' Players';
                         }
                     }
                     if (teamv['team'] === 'Green') {
                         if (teamv['queued'] === true) {
-                            greenPlayers = ':green_square: Green Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                            greenPlayers = ':green_square: Green: ' + teamv['players'] + ' Players (' + teamv['queuedPlayers'] + ' Players Queued)';
                         } else {
-                            greenPlayers = ':green_square: Green Players: ' + teamv['players'] + ' players';
+                            greenPlayers = ':green_square: Green: ' + teamv['players'] + ' Players';
                         }
                     }
                     if (teamv['team'] === 'Yellow') {
                         if (teamv['queued'] === true) {
-                            yellowPlayers = ':yellow_square: Yellow Players: ' + teamv['players'] + ' players(' + teamv['queuedPlayers'] + ' players queued)';
+                            yellowPlayers = ':yellow_square: Yellow: ' + teamv['players'] + ' Players (' + teamv['queuedPlayers'] + ' Players Queued)';
                         } else {
-                            yellowPlayers = ':yellow_square: Yellow Players: ' + teamv['players'] + ' players';
+                            yellowPlayers = ':yellow_square: Yellow: ' + teamv['players'] + ' Players';
                         }
                     }
                 });
                 const playersStr = redPlayers + '\n' + bluePlayers + '\n' + greenPlayers + '\n' + yellowPlayers;
                 const embedObject = new EmbedBuilder()
                     .setTitle(voteName)
-                    .setDescription('Map: ' + mapName + '\n' + players + '\nCurrent Game State: ' + gamestate)
+                    .setDescription('Map: ' + mapName + '\n' + players)
                     .addFields({
-                        name: 'Players',
-                        value: playersStr
+                        name: 'Current Phase',
+                        value: '```' + gamestate + '```'
                     });
                 if (beforeVote === false) {
                     embedObject.addFields(
@@ -790,20 +793,25 @@ client.on('interactionCreate', async (interaction) => {
                 greenstr = greenstr.slice(0, -2) + '```';
                 yellowstr = yellowstr.slice(0, -2) + '```';
                 playerstr = playerstr.slice(0, -2) + '```';
+                if (!data[3].length) redstr = '```No Players```';
+                if (!data[4].length) bluestr = '```No Players```';
+                if (!data[5].length) greenstr = '```No Players```';
+                if (!data[6].length) yellowstr = '```No Players```';
+                if (!data[7].length) playerstr = '```No Players```';
                 embedObject.addFields({
-                    name: ':red_square: Red Players',
+                    name: redPlayers,
                     value: redstr
                 }, {
-                    name: ':blue_square: Blue Players',
+                    name: bluePlayers,
                     value: bluestr
                 }, {
-                    name: ':green_square: Green Players',
+                    name: greenPlayers,
                     value: greenstr
                 }, {
-                    name: ':yellow_square: Yellow Players',
+                    name: yellowPlayers,
                     value: yellowstr
                 }, {
-                    name: ':compass: Lobby Players',
+                    name: `:compass: Lobby: ${data[7].length} Players`,
                     value: playerstr
                 });
                 interaction.editReply({ embeds: [embedObject] });
@@ -846,7 +854,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isSelectMenu()) return;
 
     if (interaction.customId.startsWith('MapVote')) {
-        console.log(interaction);
         await interaction.deferUpdate();
         const slotnum = parseInt(interaction.customId.replace('MapVote', ''));
         const mapName = interaction.values[0];
@@ -878,7 +885,7 @@ client.on('interactionCreate', async (interaction) => {
                     setTimeout(() => {
                         bot.chat(voteText);
                         if (isConnected === false) {
-                            if (bot.spawnPoint.x === 80 && bot.spawnPoint.y === 80 && bot.spawnPoint.z === 9) {
+                            if (bot.spawnPoint.x === -19 && bot.spawnPoint.y === 90 && bot.spawnPoint.z === 3) {
                                 bot.chat('/al');
                             } else if (bot.spawnPoint.x === -1140 && bot.spawnPoint.y === 74 && bot.spawnPoint.z === -3213) {
                                 bot.setQuickBarSlot(0);
