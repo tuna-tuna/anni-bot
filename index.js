@@ -872,6 +872,8 @@ client.on('interactionCreate', async (interaction) => {
             const getMatch = new Promise((resolve, reject) => {
                 let isConnected = false;
                 const voteText = '/vote ' + mapName;
+
+                interaction.editReply({content: 'Voting ...' });
                 
                 // for debug
                 bot.on('kicked', (reason, loggedIn) => {
